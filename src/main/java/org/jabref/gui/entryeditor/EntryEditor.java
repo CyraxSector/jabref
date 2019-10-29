@@ -25,6 +25,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.BorderPane;
 
+import org.jabref.Globals;
 import org.jabref.gui.BasePanel;
 import org.jabref.gui.DialogService;
 import org.jabref.gui.GUIGlobals;
@@ -88,6 +89,7 @@ public class EntryEditor extends BorderPane {
     @Inject private StateManager stateManager;
     @Inject private FileUpdateMonitor fileMonitor;
     @Inject private CountingUndoManager undoManager;
+    private final List<EntryEditorTab> entryEditorTabs = new LinkedList<>();
 
     public EntryEditor(BasePanel panel, ExternalFileTypes externalFileTypes) {
         this.panel = panel;
@@ -235,7 +237,7 @@ public class EntryEditor extends BorderPane {
 
     @FXML
     public void close() {
-        panel.entryEditorClosing(EntryEditor.this);
+        panel.entryEditorClosing();
     }
 
     @FXML
@@ -261,40 +263,40 @@ public class EntryEditor extends BorderPane {
     }
 
     private List<EntryEditorTab> createTabs() {
-        List<EntryEditorTab> tabs = new LinkedList<>();
+        // Preview tab
+        entryEditorTabs.add(new PreviewTab(databaseContext, dialogService, Globals.prefs, ExternalFileTypes.getInstance()));
 
         // Required fields
-        tabs.add(new RequiredFieldsTab(databaseContext, panel.getSuggestionProviders(), undoManager, dialogService));
+        entryEditorTabs.add(new RequiredFieldsTab(databaseContext, panel.getSuggestionProviders(), undoManager, dialogService, Globals.prefs, Globals.entryTypesManager, ExternalFileTypes.getInstance(), Globals.TASK_EXECUTOR, Globals.journalAbbreviationLoader));
 
         // Optional fields
-        tabs.add(new OptionalFieldsTab(databaseContext, panel.getSuggestionProviders(), undoManager, dialogService));
-        tabs.add(new OptionalFields2Tab(databaseContext, panel.getSuggestionProviders(), undoManager, dialogService));
-        tabs.add(new DeprecatedFieldsTab(databaseContext, panel.getSuggestionProviders(), undoManager, dialogService));
+        entryEditorTabs.add(new OptionalFieldsTab(databaseContext, panel.getSuggestionProviders(), undoManager, dialogService, Globals.prefs, Globals.entryTypesManager, ExternalFileTypes.getInstance(), Globals.TASK_EXECUTOR, Globals.journalAbbreviationLoader));
+        entryEditorTabs.add(new OptionalFields2Tab(databaseContext, panel.getSuggestionProviders(), undoManager, dialogService, Globals.prefs, Globals.entryTypesManager, ExternalFileTypes.getInstance(), Globals.TASK_EXECUTOR, Globals.journalAbbreviationLoader));
+        entryEditorTabs.add(new DeprecatedFieldsTab(databaseContext, panel.getSuggestionProviders(), undoManager, dialogService, Globals.prefs, Globals.entryTypesManager, ExternalFileTypes.getInstance(), Globals.TASK_EXECUTOR, Globals.journalAbbreviationLoader));
 
         // Other fields
-        tabs.add(new OtherFieldsTab(databaseContext, panel.getSuggestionProviders(), undoManager,
-                entryEditorPreferences.getCustomTabFieldNames(), dialogService));
+        entryEditorTabs.add(new OtherFieldsTab(databaseContext, panel.getSuggestionProviders(), undoManager, entryEditorPreferences.getCustomTabFieldNames(), dialogService, Globals.prefs, Globals.entryTypesManager, ExternalFileTypes.getInstance(), Globals.TASK_EXECUTOR, Globals.journalAbbreviationLoader));
 
         // General fields from preferences
         for (Map.Entry<String, Set<Field>> tab : entryEditorPreferences.getEntryEditorTabList().entrySet()) {
-            tabs.add(new UserDefinedFieldsTab(tab.getKey(), tab.getValue(), databaseContext, panel.getSuggestionProviders(), undoManager, dialogService));
+            entryEditorTabs.add(new UserDefinedFieldsTab(tab.getKey(), tab.getValue(), databaseContext, panel.getSuggestionProviders(), undoManager, dialogService, Globals.prefs, Globals.entryTypesManager, ExternalFileTypes.getInstance(), Globals.TASK_EXECUTOR, Globals.journalAbbreviationLoader));
         }
 
         // Special tabs
-        tabs.add(new MathSciNetTab());
-        tabs.add(new FileAnnotationTab(panel.getAnnotationCache()));
-        tabs.add(new RelatedArticlesTab(this, entryEditorPreferences, dialogService));
+        entryEditorTabs.add(new MathSciNetTab());
+        entryEditorTabs.add(new FileAnnotationTab(panel.getAnnotationCache()));
+        entryEditorTabs.add(new RelatedArticlesTab(this, entryEditorPreferences, dialogService));
 
         // Source tab
         sourceTab = new SourceTab(databaseContext, undoManager,
                 entryEditorPreferences.getLatexFieldFormatterPreferences(),
                 entryEditorPreferences.getImportFormatPreferences(), fileMonitor, dialogService, stateManager);
-        tabs.add(sourceTab);
+        entryEditorTabs.add(sourceTab);
 
         // LaTeX citations tab
-        tabs.add(new LatexCitationsTab(databaseContext, preferencesService, taskExecutor, dialogService));
+        entryEditorTabs.add(new LatexCitationsTab(databaseContext, preferencesService, taskExecutor, dialogService));
 
-        return tabs;
+        return entryEditorTabs;
     }
 
     private void recalculateVisibleTabs() {
@@ -401,5 +403,13 @@ public class EntryEditor extends BorderPane {
                 }
             }
         });
+    }
+
+    public void nextPreviewStyle() {
+        this.entryEditorTabs.forEach(EntryEditorTab::nextPreviewStyle);
+    }
+
+    public void previousPreviewStyle() {
+        this.entryEditorTabs.forEach(EntryEditorTab::previousPreviewStyle);
     }
 }

@@ -9,8 +9,8 @@ import org.jabref.Globals;
 import org.jabref.model.database.BibDatabaseMode;
 import org.jabref.model.entry.BibEntryType;
 import org.jabref.model.entry.BibEntryTypeBuilder;
-import org.jabref.model.entry.EntryTypeFactory;
 import org.jabref.model.entry.field.FieldFactory;
+import org.jabref.model.entry.types.EntryTypeFactory;
 import org.jabref.preferences.JabRefPreferences;
 
 class CustomEntryTypePreferenceMigration {
@@ -32,7 +32,7 @@ class CustomEntryTypePreferenceMigration {
         int number = 0;
         Optional<BibEntryType> type;
         while ((type = getBibEntryType(number)).isPresent()) {
-            Globals.entryTypesManager.addCustomizedEntryType(type.get(), defaultBibDatabaseMode);
+            Globals.entryTypesManager.addCustomOrModifiedType(type.get(), defaultBibDatabaseMode);
             storedOldTypes.add(type.get());
             number++;
         }

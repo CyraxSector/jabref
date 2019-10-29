@@ -2,7 +2,6 @@ package org.jabref.gui;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,7 +13,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import javax.swing.SwingUtilities;
 import javax.swing.undo.CannotRedoException;
 import javax.swing.undo.CannotUndoException;
 
@@ -22,7 +20,6 @@ import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.geometry.Orientation;
 import javafx.scene.Node;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SplitPane;
 import javafx.scene.layout.StackPane;
 
@@ -45,12 +42,8 @@ import org.jabref.gui.entryeditor.EntryEditor;
 import org.jabref.gui.exporter.SaveDatabaseAction;
 import org.jabref.gui.exporter.WriteXMPAction;
 import org.jabref.gui.externalfiles.FindFullTextAction;
-import org.jabref.gui.externalfiletype.ExternalFileMenuItem;
 import org.jabref.gui.externalfiletype.ExternalFileType;
 import org.jabref.gui.externalfiletype.ExternalFileTypes;
-import org.jabref.gui.filelist.FileListEntry;
-import org.jabref.gui.filelist.FileListTableModel;
-import org.jabref.gui.icon.JabRefIcon;
 import org.jabref.gui.importer.actions.AppendDatabaseAction;
 import org.jabref.gui.journals.AbbreviateAction;
 import org.jabref.gui.journals.UnabbreviateAction;
@@ -59,7 +52,6 @@ import org.jabref.gui.maintable.MainTableDataModel;
 import org.jabref.gui.mergeentries.MergeEntriesAction;
 import org.jabref.gui.mergeentries.MergeWithFetchedEntryAction;
 import org.jabref.gui.preview.CitationStyleToClipboardWorker;
-import org.jabref.gui.preview.PreviewPanel;
 import org.jabref.gui.specialfields.SpecialFieldDatabaseChangeListener;
 import org.jabref.gui.specialfields.SpecialFieldValueViewModel;
 import org.jabref.gui.specialfields.SpecialFieldViewModel;
@@ -92,6 +84,7 @@ import org.jabref.model.database.event.EntryRemovedEvent;
 import org.jabref.model.database.shared.DatabaseLocation;
 import org.jabref.model.database.shared.DatabaseSynchronizer;
 import org.jabref.model.entry.BibEntry;
+import org.jabref.model.entry.FileFieldParser;
 import org.jabref.model.entry.LinkedFile;
 import org.jabref.model.entry.event.EntryChangedEvent;
 import org.jabref.model.entry.event.EntryEventSource;
@@ -101,7 +94,6 @@ import org.jabref.model.entry.field.SpecialField;
 import org.jabref.model.entry.field.SpecialFieldValue;
 import org.jabref.model.entry.field.StandardField;
 import org.jabref.preferences.JabRefPreferences;
-import org.jabref.preferences.PreviewPreferences;
 
 import com.google.common.eventbus.Subscribe;
 import org.fxmisc.easybind.EasyBind;
@@ -127,13 +119,12 @@ public class BasePanel extends StackPane {
     // Keeps track of the string dialog if it is open.
     private final Map<Actions, BaseAction> actions = new HashMap<>();
     private final SidePaneManager sidePaneManager;
-    private final PreviewPanel preview;
-    private final BasePanelPreferences preferences;
     private final ExternalFileTypes externalFileTypes;
 
     private final EntryEditor entryEditor;
     private final DialogService dialogService;
     private MainTable mainTable;
+    private BasePanelPreferences preferences;
     // To contain instantiated entry editors. This is to save time
     // As most enums, this must not be null
     private BasePanelMode mode = BasePanelMode.SHOWING_NOTHING;
@@ -151,10 +142,12 @@ public class BasePanel extends StackPane {
     // the query the user searches when this BasePanel is active
     private Optional<SearchQuery> currentSearchQuery = Optional.empty();
     private Optional<DatabaseChangeMonitor> changeMonitor = Optional.empty();
+    private JabRefExecutorService executorService;
 
     public BasePanel(JabRefFrame frame, BasePanelPreferences preferences, BibDatabaseContext bibDatabaseContext, ExternalFileTypes externalFileTypes) {
         this.preferences = Objects.requireNonNull(preferences);
         this.frame = Objects.requireNonNull(frame);
+        this.executorService = JabRefExecutorService.INSTANCE;
         this.bibDatabaseContext = Objects.requireNonNull(bibDatabaseContext);
         this.externalFileTypes = Objects.requireNonNull(externalFileTypes);
         this.undoManager = frame.getUndoManager();
@@ -184,8 +177,8 @@ public class BasePanel extends StackPane {
         this.getDatabase().registerListener(new UpdateTimestampListener(Globals.prefs));
 
         this.entryEditor = new EntryEditor(this, externalFileTypes);
-
-        this.preview = new PreviewPanel(getBibDatabaseContext(), this, dialogService, externalFileTypes, Globals.getKeyPrefs(), preferences.getPreviewPreferences());
+        // Open entry editor for first entry on start up.
+        Platform.runLater(() -> clearAndSelectFirst());
     }
 
     @Subscribe
@@ -249,7 +242,7 @@ public class BasePanel extends StackPane {
     }
 
     private void setupActions() {
-        SaveDatabaseAction saveAction = new SaveDatabaseAction(this, Globals.prefs);
+        SaveDatabaseAction saveAction = new SaveDatabaseAction(this, Globals.prefs, Globals.entryTypesManager);
         CleanupAction cleanUpAction = new CleanupAction(this, Globals.prefs, Globals.TASK_EXECUTOR);
 
         actions.put(Actions.UNDO, undoAction);
@@ -267,8 +260,6 @@ public class BasePanel extends StackPane {
 
         // The action for copying selected entries.
         actions.put(Actions.COPY, this::copy);
-
-        actions.put(Actions.PRINT_PREVIEW, new PrintPreviewAction());
 
         actions.put(Actions.CUT, this::cut);
 
@@ -342,39 +333,33 @@ public class BasePanel extends StackPane {
         actions.put(Actions.REPLACE_ALL, () -> (new ReplaceStringAction(this)).execute());
 
         actions.put(new SpecialFieldValueViewModel(SpecialField.RELEVANCE.getValues().get(0)).getCommand(),
-                    new SpecialFieldViewModel(SpecialField.RELEVANCE, undoManager).getSpecialFieldAction(SpecialField.RELEVANCE.getValues().get(0), frame));
+                new SpecialFieldViewModel(SpecialField.RELEVANCE, undoManager).getSpecialFieldAction(SpecialField.RELEVANCE.getValues().get(0), frame));
 
         actions.put(new SpecialFieldValueViewModel(SpecialField.QUALITY.getValues().get(0)).getCommand(),
-                    new SpecialFieldViewModel(SpecialField.QUALITY, undoManager).getSpecialFieldAction(SpecialField.QUALITY.getValues().get(0), frame));
+                new SpecialFieldViewModel(SpecialField.QUALITY, undoManager).getSpecialFieldAction(SpecialField.QUALITY.getValues().get(0), frame));
 
         actions.put(new SpecialFieldValueViewModel(SpecialField.PRINTED.getValues().get(0)).getCommand(),
-                    new SpecialFieldViewModel(SpecialField.PRINTED, undoManager).getSpecialFieldAction(SpecialField.PRINTED.getValues().get(0), frame));
+                new SpecialFieldViewModel(SpecialField.PRINTED, undoManager).getSpecialFieldAction(SpecialField.PRINTED.getValues().get(0), frame));
 
         for (SpecialFieldValue prio : SpecialField.PRIORITY.getValues()) {
             actions.put(new SpecialFieldValueViewModel(prio).getCommand(),
-                        new SpecialFieldViewModel(SpecialField.PRIORITY, undoManager).getSpecialFieldAction(prio, this.frame));
+                    new SpecialFieldViewModel(SpecialField.PRIORITY, undoManager).getSpecialFieldAction(prio, this.frame));
         }
         for (SpecialFieldValue rank : SpecialField.RANKING.getValues()) {
             actions.put(new SpecialFieldValueViewModel(rank).getCommand(),
-                        new SpecialFieldViewModel(SpecialField.RANKING, undoManager).getSpecialFieldAction(rank, this.frame));
+                    new SpecialFieldViewModel(SpecialField.RANKING, undoManager).getSpecialFieldAction(rank, this.frame));
         }
         for (SpecialFieldValue status : SpecialField.READ_STATUS.getValues()) {
             actions.put(new SpecialFieldValueViewModel(status).getCommand(),
-                        new SpecialFieldViewModel(SpecialField.READ_STATUS, undoManager).getSpecialFieldAction(status, this.frame));
+                    new SpecialFieldViewModel(SpecialField.READ_STATUS, undoManager).getSpecialFieldAction(status, this.frame));
         }
 
-        actions.put(Actions.TOGGLE_PREVIEW, () -> {
-            PreviewPreferences previewPreferences = Globals.prefs.getPreviewPreferences();
-            boolean enabled = !previewPreferences.isPreviewPanelEnabled();
-            PreviewPreferences newPreviewPreferences = previewPreferences.getBuilder()
-                                                                         .withPreviewPanelEnabled(enabled)
-                                                                         .build();
-            Globals.prefs.storePreviewPreferences(newPreviewPreferences);
-            setPreviewActive(enabled);
+        actions.put(Actions.NEXT_PREVIEW_STYLE, () -> {
+            entryEditor.nextPreviewStyle();
         });
-
-        actions.put(Actions.NEXT_PREVIEW_STYLE, this::nextPreviewStyle);
-        actions.put(Actions.PREVIOUS_PREVIEW_STYLE, this::previousPreviewStyle);
+        actions.put(Actions.PREVIOUS_PREVIEW_STYLE, () -> {
+            entryEditor.previousPreviewStyle();
+        });
 
         actions.put(Actions.SEND_AS_EMAIL, new SendAsEMailAction(frame));
 
@@ -532,7 +517,7 @@ public class BasePanel extends StackPane {
             Layout layout;
             try {
                 layout = new LayoutHelper(sr, Globals.prefs.getLayoutFormatterPreferences(Globals.journalAbbreviationLoader))
-                                                                                                                             .getLayoutFromText();
+                        .getLayoutFromText();
             } catch (IOException e) {
                 LOGGER.info("Could not get layout", e);
                 return;
@@ -579,16 +564,21 @@ public class BasePanel extends StackPane {
                 new SearchAndOpenFile(entry, BasePanel.this).searchAndOpen();
                 return;
             }
-            FileListTableModel fileListTableModel = new FileListTableModel();
-            entry.getField(StandardField.FILE).ifPresent(fileListTableModel::setContent);
-            if (fileListTableModel.getRowCount() == 0) {
+
+            List<LinkedFile> files = new ArrayList<>();
+            entry.getField(StandardField.FILE).map(FileFieldParser::parse).ifPresent(files::addAll);
+
+            if (files.isEmpty()) {
                 // content in BibTeX field is not readable
                 new SearchAndOpenFile(entry, BasePanel.this).searchAndOpen();
                 return;
             }
-            FileListEntry flEntry = fileListTableModel.getEntry(0);
-            ExternalFileMenuItem item = new ExternalFileMenuItem(frame(), "", flEntry.getLink(), flEntry.getType().map(ExternalFileType::getIcon).map(JabRefIcon::getSmallIcon).orElse(null), bibDatabaseContext, flEntry.getType());
-            item.doClick();
+            LinkedFile flEntry = files.get(0);
+            try {
+                JabRefDesktop.openExternalFileAnyFormat(this.getBibDatabaseContext(), flEntry.getLink(), ExternalFileTypes.getInstance().fromLinkedFile(flEntry, true));
+            } catch (IOException ex) {
+                dialogService.showErrorDialogAndWait(ex);
+            }
         });
     }
 
@@ -679,7 +669,6 @@ public class BasePanel extends StackPane {
                                                          .stream()
                                                          .findFirst()
                                                          .ifPresent(entry -> {
-                                                             preview.setEntry(entry);
                                                              entryEditor.setEntry(entry);
                                                          }));
 
@@ -747,22 +736,20 @@ public class BasePanel extends StackPane {
     }
 
     public void setupMainPanel() {
+        preferences = BasePanelPreferences.from(Globals.prefs);
+
         splitPane = new SplitPane();
         splitPane.setOrientation(Orientation.VERTICAL);
         adjustSplitter(); // restore last splitting state (before mainTable is created as creation affects the stored size of the entryEditors)
 
         createMainTable();
 
-        ScrollPane pane = mainTable.getPane();
-        pane.setFitToHeight(true);
-        pane.setFitToWidth(true);
-        splitPane.getItems().add(pane);
+        splitPane.getItems().add(mainTable);
 
         // Set up name autocompleter for search:
-        instantiateSearchAutoCompleter();
-        this.getDatabase().registerListener(new SearchAutoCompleteListener());
-
         setupAutoCompletion();
+        executorService.execute(this::instantiateSearchAutoCompleter);
+        this.getDatabase().registerListener(new SearchAutoCompleteListener());
 
         // Saves the divider position as soon as it changes
         // We need to keep a reference to the subscription, otherwise the binding gets garbage collected
@@ -816,9 +803,7 @@ public class BasePanel extends StackPane {
     }
 
     private void adjustSplitter() {
-        if (mode == BasePanelMode.SHOWING_PREVIEW) {
-            splitPane.setDividerPositions(Globals.prefs.getPreviewPreferences().getPreviewPanelDividerPosition().doubleValue());
-        } else if (mode == BasePanelMode.SHOWING_EDITOR) {
+        if (mode == BasePanelMode.SHOWING_EDITOR) {
             splitPane.setDividerPositions(preferences.getEntryEditorDividerPosition());
         }
     }
@@ -828,9 +813,8 @@ public class BasePanel extends StackPane {
     }
 
     /**
-     * Sets the entry editor as the bottom component in the split pane. If an entry editor already was shown,
-     * makes sure that the divider doesn't move. Updates the mode to SHOWING_EDITOR.
-     * Then shows the given entry.
+     * Sets the entry editor as the bottom component in the split pane. If an entry editor already was shown, makes sure
+     * that the divider doesn't move. Updates the mode to SHOWING_EDITOR. Then shows the given entry.
      *
      * @param entry The entry to edit.
      */
@@ -845,17 +829,11 @@ public class BasePanel extends StackPane {
     }
 
     private void showBottomPane(BasePanelMode newMode) {
-        Node pane;
-        switch (newMode) {
-            case SHOWING_PREVIEW:
-                pane = preview;
-                break;
-            case SHOWING_EDITOR:
-                pane = entryEditor;
-                break;
-            default:
-                throw new UnsupportedOperationException("new mode not recognized: " + newMode.name());
+        if (newMode != BasePanelMode.SHOWING_EDITOR) {
+            throw new UnsupportedOperationException("new mode not recognized: " + newMode.name());
         }
+        Node pane = entryEditor;
+
         if (splitPane.getItems().size() == 2) {
             splitPane.getItems().set(1, pane);
         } else {
@@ -872,46 +850,11 @@ public class BasePanel extends StackPane {
     }
 
     /**
-     * Sets the given preview panel as the bottom component in the split panel. Updates the mode to SHOWING_PREVIEW.
-     *
-     * @param entry The entry to show in the preview.
-     */
-    private void showPreview(BibEntry entry) {
-        showBottomPane(BasePanelMode.SHOWING_PREVIEW);
-
-        preview.setEntry(entry);
-    }
-
-    private void showPreview() {
-        if (!mainTable.getSelectedEntries().isEmpty()) {
-            showPreview(mainTable.getSelectedEntries().get(0));
-        }
-    }
-
-    public void nextPreviewStyle() {
-        cyclePreview(Globals.prefs.getPreviewPreferences().getPreviewCyclePosition() + 1);
-    }
-
-    public void previousPreviewStyle() {
-        cyclePreview(Globals.prefs.getPreviewPreferences().getPreviewCyclePosition() - 1);
-    }
-
-    private void cyclePreview(int newPosition) {
-        PreviewPreferences previewPreferences = Globals.prefs.getPreviewPreferences()
-                                                             .getBuilder()
-                                                             .withPreviewCyclePosition(newPosition)
-                                                             .build();
-        Globals.prefs.storePreviewPreferences(previewPreferences);
-
-        preview.updateLayout(previewPreferences);
-    }
-
-    /**
      * Removes the bottom component.
      */
     public void closeBottomPane() {
         mode = BasePanelMode.SHOWING_NOTHING;
-        splitPane.getItems().removeAll(entryEditor, preview);
+        splitPane.getItems().remove(entryEditor);
     }
 
     /**
@@ -920,6 +863,14 @@ public class BasePanel extends StackPane {
      */
     public void clearAndSelect(final BibEntry bibEntry) {
         mainTable.clearAndSelect(bibEntry);
+    }
+
+    /**
+     * Select and open entry editor for first entry in main table.
+     */
+    private void clearAndSelectFirst() {
+        mainTable.clearAndSelectFirst();
+        showAndEdit();
     }
 
     public void selectPreviousEntry() {
@@ -933,24 +884,17 @@ public class BasePanel extends StackPane {
     /**
      * This method is called from an EntryEditor when it should be closed. We relay to the selection listener, which
      * takes care of the rest.
-     *
-     * @param editor The entry editor to close.
      */
-    public void entryEditorClosing(EntryEditor editor) {
-        if (Globals.prefs.getPreviewPreferences().isPreviewPanelEnabled()) {
-            showPreview(editor.getEntry());
-        } else {
-            closeBottomPane();
-        }
+    public void entryEditorClosing() {
+        closeBottomPane();
         mainTable.requestFocus();
     }
 
     /**
-     * Closes the entry editor or preview panel if it is showing the given entry.
+     * Closes the entry editor if it is showing the given entry.
      */
-    public void ensureNotShowingBottomPanel(BibEntry entry) {
-        if (((mode == BasePanelMode.SHOWING_EDITOR) && (entryEditor.getEntry() == entry))
-                || ((mode == BasePanelMode.SHOWING_PREVIEW))) {
+    private void ensureNotShowingBottomPanel(BibEntry entry) {
+        if (((mode == BasePanelMode.SHOWING_EDITOR) && (entryEditor.getEntry() == entry))) {
             closeBottomPane();
         }
     }
@@ -964,16 +908,7 @@ public class BasePanel extends StackPane {
 
     public void markBaseChanged() {
         baseChanged = true;
-
-        if (SwingUtilities.isEventDispatchThread()) {
-            markBasedChangedInternal();
-        } else {
-            try {
-                SwingUtilities.invokeAndWait(() -> markBasedChangedInternal());
-            } catch (InvocationTargetException | InterruptedException e) {
-                LOGGER.info("Problem marking database as changed", e);
-            }
-        }
+        markBasedChangedInternal();
     }
 
     private void markBasedChangedInternal() {
@@ -1007,7 +942,7 @@ public class BasePanel extends StackPane {
         return bibDatabaseContext.getDatabase();
     }
 
-    public boolean showDeleteConfirmationDialog(int numberOfEntries) {
+    private boolean showDeleteConfirmationDialog(int numberOfEntries) {
         if (Globals.prefs.getBoolean(JabRefPreferences.CONFIRM_DELETE)) {
             String title = Localization.lang("Delete entry");
             String message = Localization.lang("Really delete the selected entry?");
@@ -1021,31 +956,26 @@ public class BasePanel extends StackPane {
             }
 
             return dialogService.showConfirmationDialogWithOptOutAndWait(title,
-                                                                         message,
-                                                                         okButton,
-                                                                         cancelButton,
-                                                                         Localization.lang("Disable this confirmation dialog"),
-                                                                         optOut -> Globals.prefs.putBoolean(JabRefPreferences.CONFIRM_DELETE, !optOut));
+                    message,
+                    okButton,
+                    cancelButton,
+                    Localization.lang("Disable this confirmation dialog"),
+                    optOut -> Globals.prefs.putBoolean(JabRefPreferences.CONFIRM_DELETE, !optOut));
         } else {
             return true;
         }
     }
 
     /**
-     * Depending on whether a preview or an entry editor is showing, save the current divider location in the correct preference setting.
+     * Depending on whether a preview or an entry editor is showing, save the current divider location in the correct
+     * preference setting.
      */
     private void saveDividerLocation(Number position) {
         if (position == null) {
             return;
         }
 
-        if (mode == BasePanelMode.SHOWING_PREVIEW) {
-            PreviewPreferences previewPreferences = Globals.prefs.getPreviewPreferences()
-                                                                 .getBuilder()
-                                                                 .withPreviewPanelDividerPosition(position)
-                                                                 .build();
-            Globals.prefs.storePreviewPreferences(previewPreferences);
-        } else if (mode == BasePanelMode.SHOWING_EDITOR) {
+        if (mode == BasePanelMode.SHOWING_EDITOR) {
             preferences.setEntryEditorDividerPosition(position.doubleValue());
         }
     }
@@ -1103,14 +1033,6 @@ public class BasePanel extends StackPane {
         return String.format("%s %d %s.", start, count, (count > 1 ? Localization.lang("entries") : Localization.lang("entry")));
     }
 
-    private void setPreviewActive(boolean enabled) {
-        if (enabled) {
-            showPreview();
-        } else {
-            preview.close();
-        }
-    }
-
     public CountingUndoManager getUndoManager() {
         return undoManager;
     }
@@ -1125,11 +1047,9 @@ public class BasePanel extends StackPane {
 
     /**
      * Set the query the user currently searches while this basepanel is active
-     *
-     * @param currentSearchQuery can be null
      */
-    public void setCurrentSearchQuery(SearchQuery currentSearchQuery) {
-        this.currentSearchQuery = Optional.ofNullable(currentSearchQuery);
+    public void setCurrentSearchQuery(Optional<SearchQuery> currentSearchQuery) {
+        this.currentSearchQuery = currentSearchQuery;
     }
 
     public CitationStyleCache getCitationStyleCache() {
@@ -1224,7 +1144,7 @@ public class BasePanel extends StackPane {
             if (Globals.prefs.getBoolean(JabRefPreferences.AUTO_ASSIGN_GROUP)) {
                 final List<BibEntry> entries = Collections.singletonList(addedEntryEvent.getBibEntry());
                 Globals.stateManager.getSelectedGroup(bibDatabaseContext).forEach(
-                                                                                  selectedGroup -> selectedGroup.addEntriesToGroup(entries));
+                        selectedGroup -> selectedGroup.addEntriesToGroup(entries));
             }
         }
     }
@@ -1239,8 +1159,7 @@ public class BasePanel extends StackPane {
 
     /**
      * Ensures that the search auto completer is up to date when entries are changed AKA Let the auto completer, if any,
-     * harvest words from the entry
-     * Actual methods for autocomplete indexing  must run in javafx thread
+     * harvest words from the entry Actual methods for autocomplete indexing  must run in javafx thread
      */
     private class SearchAutoCompleteListener {
 
@@ -1256,8 +1175,8 @@ public class BasePanel extends StackPane {
     }
 
     /**
-     * Ensures that the results of the current search are updated when a new entry is inserted into the database
-     * Actual methods for performing search must run in javafx thread
+     * Ensures that the results of the current search are updated when a new entry is inserted into the database Actual
+     * methods for performing search must run in javafx thread
      */
     private class SearchListener {
 
@@ -1331,8 +1250,8 @@ public class BasePanel extends StackPane {
                         try {
 
                             JabRefDesktop.openExternalFileAnyFormat(bibDatabaseContext,
-                                                                    linkedFile.get().getLink(),
-                                                                    ExternalFileTypes.getInstance().fromLinkedFile(linkedFile.get(), true));
+                                    linkedFile.get().getLink(),
+                                    ExternalFileTypes.getInstance().fromLinkedFile(linkedFile.get(), true));
 
                             output(Localization.lang("External viewer called") + '.');
                         } catch (IOException e) {
@@ -1362,15 +1281,6 @@ public class BasePanel extends StackPane {
             }
 
             markChangedOrUnChanged();
-        }
-    }
-
-    private class PrintPreviewAction implements BaseAction {
-
-        @Override
-        public void action() {
-            showPreview();
-            preview.print();
         }
     }
 }

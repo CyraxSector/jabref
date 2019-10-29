@@ -16,12 +16,12 @@ import org.jabref.model.database.BibDatabaseMode;
 import org.jabref.model.entry.Author;
 import org.jabref.model.entry.AuthorList;
 import org.jabref.model.entry.BibEntry;
-import org.jabref.model.entry.EntryTypeFactory;
 import org.jabref.model.entry.Month;
 import org.jabref.model.entry.field.Field;
 import org.jabref.model.entry.field.FieldFactory;
 import org.jabref.model.entry.field.StandardField;
 import org.jabref.model.entry.field.UnknownField;
+import org.jabref.model.entry.types.EntryTypeFactory;
 import org.jabref.model.strings.StringUtil;
 
 import org.apache.xmpbox.DateConverter;
@@ -347,13 +347,11 @@ public class DublinCoreExtractor {
     public void fillDublinCoreSchema() {
         // Query privacy filter settings
         boolean useXmpPrivacyFilter = xmpPreferences.isUseXMPPrivacyFilter();
-        // Fields for which not to write XMP data later on:
-        Set<Field> filters = new TreeSet<>(xmpPreferences.getXmpPrivacyFilter());
 
         Set<Entry<Field, String>> fieldValues = new TreeSet<>(Comparator.comparing(fieldStringEntry -> fieldStringEntry.getKey().getName()));
         fieldValues.addAll(bibEntry.getFieldMap().entrySet());
         for (Entry<Field, String> field : fieldValues) {
-            if (useXmpPrivacyFilter && filters.contains(field.getKey())) {
+            if (useXmpPrivacyFilter && xmpPreferences.getXmpPrivacyFilter().contains(field.getKey())) {
                 continue;
             }
 

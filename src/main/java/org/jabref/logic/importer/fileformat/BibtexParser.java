@@ -35,11 +35,11 @@ import org.jabref.model.entry.BibEntry;
 import org.jabref.model.entry.BibEntryType;
 import org.jabref.model.entry.BibEntryTypesManager;
 import org.jabref.model.entry.BibtexString;
-import org.jabref.model.entry.EntryTypeFactory;
 import org.jabref.model.entry.field.Field;
 import org.jabref.model.entry.field.FieldFactory;
 import org.jabref.model.entry.field.FieldProperty;
 import org.jabref.model.entry.field.StandardField;
+import org.jabref.model.entry.types.EntryTypeFactory;
 import org.jabref.model.metadata.MetaData;
 import org.jabref.model.util.FileUpdateMonitor;
 
@@ -233,12 +233,6 @@ public class BibtexParser implements Parser {
     }
 
     private void parseAndAddEntry(String type) {
-        /**
-         * Morten Alver 13 Aug 2006: Trying to make the parser more
-         * robust. If an exception is thrown when parsing an entry,
-         * drop the entry and try to resume parsing. Add a warning
-         * for the user.
-         */
         try {
             // collect all comments and the entry type definition in front of the actual entry
             // this is at least `@Type`
@@ -256,10 +250,12 @@ public class BibtexParser implements Parser {
                 parserResult.addDuplicateKey(entry.getCiteKey());
             }
         } catch (IOException ex) {
+            // Trying to make the parser more robust.
+            // If an exception is thrown when parsing an entry, drop the entry and try to resume parsing.
+
             LOGGER.debug("Could not parse entry", ex);
             parserResult.addWarning(Localization.lang("Error occurred when parsing entry") + ": '" + ex.getMessage()
                     + "'. " + Localization.lang("Skipped entry."));
-
         }
     }
 

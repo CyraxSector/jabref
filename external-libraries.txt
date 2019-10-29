@@ -1,7 +1,7 @@
 This document lists the fonts, icons, and libraries used by JabRef.
 This file is manually kept in sync with build.gradle and the binary jars contained in the lib/ directory.
 
-One can list all depdencies by using Gradle task `depdencyReport`.
+One can list all dependencies by using Gradle task `dependencyReport`.
 It generated the file [build/reports/project/dependencies.txt](build/reports/project/dependencies.txt).
 
 # Legend
@@ -16,7 +16,7 @@ Note that the SPDX license identifiers are different from the ones used by debia
 
 # Fonts and Icons
 
-The loading animation during loading of recommendations from Mr. DLib is created by <http://loading.io/> and is free of use under licence CC0 1.0.
+The loading animation during loading of recommendations from Mr. DLib is created by <http://loading.io/> and is free of use under license CC0 1.0.
 
 Id:      material-design-icons.font
 Project: Material Design Icons
@@ -50,9 +50,9 @@ Project: pgjdbc-ng
 URL:     http://impossibl.github.io/pgjdbc-ng
 License: BSD-3-Clause
 
-Id:      com.mashape.unirest
+Id:      com.konghq.unirest
 Project: Unirest for Java
-URL:     https://github.com/Mashape/unirest-java
+URL:     https://github.com/Kong/unirest-java
 License: MIT
 
 Id:      com.microsoft.azure:applicationinsights-core
@@ -109,11 +109,6 @@ Id:      io.github.java-diff-utils:java-diff-utils
 Project: java-diff-utils
 URL:     https://github.com/java-diff-utils/java-diff-utils
 License: Apache-1.1
-
-Id:      mysql:mysql-connector-java
-Project: MySQL Connector/J
-URL:     http://www.mysql.de/downloads/connector/j/
-License: GPL-2.0 and Oracle's FOSS License Exception (http://www.mysql.com/about/legal/licensing/foss-exception/) allowing GPLv3
 
 Id:      net.java.dev.glazedlists:glazedlists_java15
 Project: Glazed Lists
@@ -194,6 +189,11 @@ Id:      org.jsoup:jsoup
 Project: jsoup
 URL:     https://github.com/jhy/jsoup/
 License: MIT
+
+Id:      org.mariadb.jdbc:mariadb-java-client
+Project: MariaDB Java Client
+URL:     https://mariadb.com/kb/en/library/about-mariadb-connector-j/
+License: LGPL-2.1-or-later
 
 Id:      org.openoffice:juh
 Project: OpenOffice.org

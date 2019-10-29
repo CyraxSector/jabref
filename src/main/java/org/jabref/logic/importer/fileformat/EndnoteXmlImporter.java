@@ -49,10 +49,11 @@ import org.jabref.logic.importer.fileformat.endnote.Xml;
 import org.jabref.logic.importer.fileformat.endnote.Year;
 import org.jabref.logic.util.StandardFileType;
 import org.jabref.model.entry.BibEntry;
-import org.jabref.model.entry.EntryType;
 import org.jabref.model.entry.LinkedFile;
-import org.jabref.model.entry.StandardEntryType;
 import org.jabref.model.entry.field.StandardField;
+import org.jabref.model.entry.types.EntryType;
+import org.jabref.model.entry.types.IEEETranEntryType;
+import org.jabref.model.entry.types.StandardEntryType;
 import org.jabref.model.strings.StringUtil;
 import org.jabref.model.util.OptionalUtil;
 
@@ -162,8 +163,8 @@ public class EndnoteXmlImporter extends Importer implements Parser {
                 return StandardEntryType.Misc;
             case "generic":
                 return StandardEntryType.Misc;
-            case "electronic rticle":
-                return StandardEntryType.Electronic;
+            case "electronic article":
+                return IEEETranEntryType.Electronic;
             case "book section":
                 return StandardEntryType.InBook;
             case "book":
@@ -185,49 +186,49 @@ public class EndnoteXmlImporter extends Importer implements Parser {
         Optional.ofNullable(record.getTitles())
                 .map(Titles::getTitle)
                 .map(Title::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.TITLE, clean(value)));
         Optional.ofNullable(record.getTitles())
                 .map(Titles::getSecondaryTitle)
                 .map(SecondaryTitle::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.JOURNAL, clean(value)));
         Optional.ofNullable(record.getPages())
                 .map(Pages::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.PAGES, value));
         Optional.ofNullable(record.getNumber())
                 .map(Number::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.NUMBER, value));
         Optional.ofNullable(record.getVolume())
                 .map(Volume::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.VOLUME, value));
         Optional.ofNullable(record.getDates())
                 .map(Dates::getYear)
                 .map(Year::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.YEAR, value));
         Optional.ofNullable(record.getNotes())
                 .map(Notes::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.NOTE, value.trim()));
         getUrl(record)
                 .ifPresent(value -> entry.setField(StandardField.URL, value));
         entry.putKeywords(getKeywords(record), preferences.getKeywordSeparator());
         Optional.ofNullable(record.getAbstract())
                 .map(Abstract::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.ABSTRACT, value.trim()));
         entry.setFiles(getLinkedFiles(record));
         Optional.ofNullable(record.getIsbn())
                 .map(Isbn::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(value -> entry.setField(StandardField.ISBN, clean(value)));
         Optional.ofNullable(record.getElectronicResourceNum())
                 .map(ElectronicResourceNum::getStyle)
-                .map(Style::getvalue)
+                .map(Style::getContent)
                 .ifPresent(doi -> entry.setField(StandardField.DOI, doi.trim()));
 
         return entry;
@@ -262,7 +263,7 @@ public class EndnoteXmlImporter extends Importer implements Parser {
     private Optional<String> getUrlValue(Url url) {
         return Optional.ofNullable(url)
                        .map(Url::getStyle)
-                       .map(Style::getvalue)
+                       .map(Style::getContent)
                        .map(this::clean);
     }
 
@@ -271,7 +272,7 @@ public class EndnoteXmlImporter extends Importer implements Parser {
         if (keywords != null) {
             return keywords.getKeyword()
                            .stream()
-                           .map(keyword -> keyword.getStyle().getvalue())
+                           .map(keyword -> keyword.getStyle().getContent())
                            .collect(Collectors.toList());
         } else {
             return Collections.emptyList();
@@ -283,7 +284,7 @@ public class EndnoteXmlImporter extends Importer implements Parser {
                                             .map(Contributors::getAuthors);
         return OptionalUtil.toStream(authors)
                            .flatMap(value -> value.getAuthor().stream())
-                           .map(author -> author.getStyle().getvalue())
+                           .map(author -> author.getStyle().getContent())
                            .collect(Collectors.joining(" and "));
     }
 

@@ -1,5 +1,6 @@
 package org.jabref.gui.importer;
 
+import java.util.EnumSet;
 import java.util.List;
 
 import javax.inject.Inject;
@@ -26,7 +27,6 @@ import org.jabref.gui.StateManager;
 import org.jabref.gui.icon.IconTheme;
 import org.jabref.gui.util.BackgroundTask;
 import org.jabref.gui.util.BaseDialog;
-import org.jabref.gui.util.BindingsHelper;
 import org.jabref.gui.util.NoSelectionModel;
 import org.jabref.gui.util.TaskExecutor;
 import org.jabref.gui.util.TextFlowLimited;
@@ -34,9 +34,9 @@ import org.jabref.gui.util.ViewModelListCellFactory;
 import org.jabref.logic.l10n.Localization;
 import org.jabref.model.database.BibDatabaseContext;
 import org.jabref.model.entry.BibEntry;
-import org.jabref.model.entry.EntryType;
-import org.jabref.model.entry.StandardEntryType;
 import org.jabref.model.entry.field.StandardField;
+import org.jabref.model.entry.types.EntryType;
+import org.jabref.model.entry.types.StandardEntryType;
 import org.jabref.model.util.FileUpdateMonitor;
 import org.jabref.preferences.PreferencesService;
 
@@ -109,7 +109,6 @@ public class ImportEntriesDialog extends BaseDialog<Void> {
                     HBox.setHgrow(entryNode, Priority.ALWAYS);
                     HBox container = new HBox(entryNode, separator, addToggle);
                     container.getStyleClass().add("entry-container");
-                    BindingsHelper.includePseudoClassWhen(container, entrySelected, addToggle.selectedProperty());
 
                     BackgroundTask.wrap(() -> viewModel.hasDuplicate(entry)).onSuccess(duplicateFound -> {
                         if (duplicateFound) {
@@ -156,8 +155,11 @@ public class ImportEntriesDialog extends BaseDialog<Void> {
     }
 
     private IconTheme.JabRefIcons getIcon(EntryType type) {
-        if (StandardEntryType.Book.equals(type)) {
+        EnumSet<StandardEntryType> crossRefTypes = EnumSet.of(StandardEntryType.InBook, StandardEntryType.InProceedings, StandardEntryType.InCollection);
+        if (type == StandardEntryType.Book) {
             return IconTheme.JabRefIcons.BOOK;
+        } else if (crossRefTypes.contains(type)) {
+            return IconTheme.JabRefIcons.OPEN_LINK;
         }
         return IconTheme.JabRefIcons.ARTICLE;
     }

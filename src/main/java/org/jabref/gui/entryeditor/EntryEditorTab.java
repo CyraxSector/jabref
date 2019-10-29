@@ -3,7 +3,7 @@ package org.jabref.gui.entryeditor;
 import javafx.scene.control.Tab;
 
 import org.jabref.model.entry.BibEntry;
-import org.jabref.model.entry.EntryType;
+import org.jabref.model.entry.types.EntryType;
 
 public abstract class EntryEditorTab extends Tab {
 
@@ -42,6 +42,20 @@ public abstract class EntryEditorTab extends Tab {
             bindToEntry(entry);
         }
         handleFocus();
+    }
+
+    /**
+     * Switch to next Preview style - should be overriden if a EntryEditorTab is actually showing a preview
+     */
+    protected void nextPreviewStyle() {
+        // do nothing by default
+    }
+
+    /**
+     * Switch to previous Preview style - should be overriden if a EntryEditorTab is actually showing a preview
+     */
+    protected void previousPreviewStyle() {
+        // do nothing by default
     }
 
 }

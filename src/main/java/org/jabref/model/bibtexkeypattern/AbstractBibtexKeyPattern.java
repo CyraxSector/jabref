@@ -9,7 +9,7 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.stream.Collectors;
 
-import org.jabref.model.entry.EntryType;
+import org.jabref.model.entry.types.EntryType;
 
 /**
  * A small table, where an entry type is associated with a Bibtex key pattern (an
@@ -49,15 +49,6 @@ public abstract class AbstractBibtexKeyPattern {
     @Override
     public int hashCode() {
         return Objects.hash(defaultPattern, data);
-    }
-
-    /**
-     * Remove a Bibtex key pattern from the BibtexKeyPattern.
-     *
-     * @param type a <code>String</code>
-     */
-    public void removeBibtexKeyPattern(String type) {
-        data.remove(type);
     }
 
     /**
